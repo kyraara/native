@@ -28,7 +28,8 @@
                 {{-- Headline --}}
                 <h1 class="font-display text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-extrabold text-white leading-tight mb-5">
                     Tugas Beres,<br>
-                    Nilai <span class="font-script text-gold">Oke</span> 🦉
+                    Nilai <span class="font-script text-gold">Oke</span>
+                    <img src="{{ asset('images/nativecuy_icon_64x64.png') }}" alt="Cuy-AI" class="inline-block w-9 h-9 sm:w-10 sm:h-10 lg:w-12 lg:h-12 xl:w-14 xl:h-14 object-contain align-middle -mt-1 drop-shadow-md">
                 </h1>
 
                 <p class="text-gray-300 text-base sm:text-lg leading-relaxed mb-8 max-w-xl">
@@ -486,7 +487,9 @@
             <div class="absolute inset-0 bg-[linear-gradient(rgba(245,185,20,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(245,185,20,0.04)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none rounded-3xl"></div>
 
             <div class="relative z-10">
-                <div class="text-5xl sm:text-6xl mb-5">🦉</div>
+                <div class="mb-5 flex justify-center">
+                    <img src="{{ asset('images/nativecuy_icon_192x192.png') }}" alt="NativeCuy mascot" class="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-2xl animate-float">
+                </div>
                 <h2 class="font-display text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-white mb-4 leading-tight">
                     Siap Bikin Tugas <br><span class="font-script text-gold">Beres Sekarang?</span>
                 </h2>

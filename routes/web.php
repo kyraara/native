@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -13,6 +14,13 @@ Route::get('/order', [OrderController::class, 'create'])->name('order.create');
 Route::post('/order', [OrderController::class, 'store'])->name('order.store');
 Route::match(['get', 'post'], '/track', [OrderController::class, 'trackSearch'])->name('order.trackSearch');
 Route::get('/track/{token}', [OrderController::class, 'track'])->name('order.track');
+
+// AI Customer Service (Cuy-AI)
+Route::prefix('chat')->middleware('throttle:20,1')->group(function () {
+    Route::post('/send',  [ChatController::class, 'send'])->name('chat.send');
+    Route::post('/reset', [ChatController::class, 'reset'])->name('chat.reset');
+    Route::get('/history', [ChatController::class, 'history'])->name('chat.history');
+});
 
 // Admin routes
 Route::prefix('admin')->middleware(['auth'])->group(function () {
