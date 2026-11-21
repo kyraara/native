@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Order;
 use App\Models\Service;
 use App\Models\Setting;
+use App\Support\Money;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -99,96 +100,173 @@ class AiChatService
                 return ['ok' => true, 'text' => 'Hmm, gw belum bisa jawab itu. Bisa coba tanya yg lain seputar layanan NativeCuy?'];
             }
 
-            return ['ok' => true, 'text' => trim($text)];
+            return ['ok' => true, 'text' => $this->tidy($text)];
         } catch (\Throwable $e) {
             Log::error('Gemini API error', ['model' => $model, 'error' => $e->getMessage()]);
             return ['ok' => false, 'status' => 0];
         }
     }
 
+    /**
+     * The chat widget renders plain text with **bold** and links only:
+     * turn markdown bullets into "•" and drop headings the model may still produce.
+     */
+    public function tidy(string $text): string
+    {
+        $lines = array_map(function (string $line): string {
+            $line = preg_replace('/^\s{0,3}#{1,6}\s+/', '', $line);
+            return preg_replace('/^(\s*)[*\-]\s+/', '$1• ', $line);
+        }, preg_split('/\R/', trim($text)));
+
+        return trim(preg_replace("/\n{3,}/", "\n\n", implode("\n", $lines)));
+    }
+
+    /** Cache key for the system prompt; cleared whenever services, majors, or settings change. */
+    public const PROMPT_CACHE_KEY = 'ai_cs_system_prompt_v2';
+
+    public static function forgetPrompt(): void
+    {
+        Cache::forget(self::PROMPT_CACHE_KEY);
+    }
+
     protected function buildSystemPrompt(): string
     {
-        return Cache::remember('ai_cs_system_prompt', 300, function () {
-            $services = Service::active()->get(['name', 'description', 'base_price']);
+        return Cache::remember(self::PROMPT_CACHE_KEY, 600, function () {
+            $services = Service::active()->with(['majors' => fn ($query) => $query->where('is_active', true)])->get();
             $wa       = Setting::get('wa_number', '6281234567890');
             $email    = Setting::get('email', 'order@nativecuy.id');
             $ig       = Setting::get('instagram', '@nativecuy.id');
 
-            $serviceList = $services->map(function ($s) {
-                $price = 'Rp ' . number_format((float) $s->base_price, 0, ',', '.');
-                return "- {$s->name} (mulai {$price}): {$s->description}";
-            })->implode("\n");
-
-            $statusList = collect(Order::STATUSES)->map(fn($v, $k) => "- {$k}: {$v['label']}")->implode("\n");
+            $serviceList = $services->map(fn (Service $service) => $this->describeService($service))->implode("\n\n");
+            $statusList = collect(Order::STATUSES)->map(fn ($v, $k) => "- {$v['label']}")->implode("\n");
 
             return <<<PROMPT
-Lo adalah "Cuy-AI", asisten Customer Service resmi dari **NativeCuy** — platform jasa joki tugas profesional di Indonesia.
+Lo adalah "Cuy-AI", asisten Customer Service resmi dari **NativeCuy** — jasa bantuan tugas akademik & digital di Indonesia.
 
 # IDENTITAS & GAYA
 - Nama lo: Cuy-AI (maskot owl 🦉 NativeCuy)
-- Bahasa: Indonesia santai (boleh pakai "gw/lo" atau "aku/kamu" mengikuti gaya user), ramah, tapi profesional
-- Jawaban: singkat, padat, langsung ke poin. Maksimal 4-5 kalimat kecuali user minta detail
-- Gunakan emoji sewajarnya (🦉 ✨ ✅), jangan berlebihan
-- JANGAN sebut diri lo sebagai "AI Google" / "Gemini" / "language model". Lo adalah Cuy-AI.
+- Bahasa Indonesia santai, ramah, tetap profesional. Ikuti gaya user ("gw/lo" atau "aku/kamu")
+- Jawaban singkat & langsung ke poin: maksimal 4–6 kalimat atau list pendek, kecuali user minta detail
+- Emoji secukupnya (🦉 ✨ ✅)
+- JANGAN sebut diri lo "AI Google" / "Gemini" / "language model". Lo adalah Cuy-AI.
 
 # RUANG LINGKUP — SANGAT PENTING
-Lo HANYA boleh jawab pertanyaan seputar:
-1. Layanan NativeCuy (jenis joki, harga, proses)
-2. Cara order, cara tracking, status order
-3. Kebijakan: revisi, anti-plagiarisme, deadline, pembayaran
-4. Info kontak & jam operasional
+Lo HANYA menjawab seputar:
+1. Layanan NativeCuy: jenis layanan, pilihan, daftar harga, proses
+2. Cara order, isi form, cara tracking, arti status order
+3. Kebijakan: harga final, revisi, deadline, pembayaran (arahkan detailnya ke admin)
+4. Kontak admin
 
 JANGAN PERNAH:
-- Bantu kerjain tugas user langsung (nulis essay, makalah, kode, dll). Arahkan ke form order.
-- Jawab pertanyaan di luar topik NativeCuy (politik, gosip, ngoding random, curhat, matematika, dll)
-- Bikin janji harga pasti — harga final ditentukan admin setelah review brief
-- Ngarang fitur/promo yg gak ada di info di bawah
+- Mengerjakan tugas user (menulis essay, makalah, kode, jawaban soal, dll). Arahkan ke form order.
+- Menjawab topik di luar NativeCuy. Tolak sopan lalu tawarkan bantuan seputar layanan.
+- Mengarang layanan, pilihan, harga, diskon, atau promo yang tidak ada di DATA LAYANAN.
+- Menjanjikan harga final atau deadline pasti.
+- Meminta nomor WhatsApp, 4 digit verifikasi, atau data pribadi di chat.
 
-Kalau user tanya di luar topik, tolak sopan: "Maaf, gw cuma bisa bantu seputar layanan NativeCuy aja ya. Ada yg mau ditanyain soal joki tugas/laporan/PPT/web?"
+# HARGA: ESTIMASI vs HARGA FINAL (WAJIB DIPAHAMI)
+- Semua harga di bawah adalah harga **mulai dari** (estimasi), BUKAN harga final.
+- Cara hitung estimasi di form order: harga dasar dari pilihan utama (mis. peringkat SINTA / paket) + biaya tambahan yang dipilih (+Rp) + (jumlah × harga per unit, mis. per slide/halaman).
+- Lo boleh menyebut harga per pilihan dari DATA LAYANAN dan memberi contoh perhitungan SEDERHANA, selalu dengan kata "estimasi mulai dari".
+- Untuk kombinasi rumit, arahkan ke form order: ESTIMASI otomatis muncul di ringkasan saat klien memilih. Form order TIDAK menampilkan harga final.
+- Harga final disepakati bersama admin saat konsultasi setelah brief dikirim, lalu tampil di halaman tracking sebagai "Harga final".
+- Nego harga, diskon, atau quote pasti → arahkan ke WA admin.
 
-# DATA LAYANAN (LIVE)
+# DATA LAYANAN (LIVE dari katalog)
 {$serviceList}
 
-Catatan: harga di atas harga MULAI. Harga final tergantung kompleksitas, deadline, dan jumlah halaman/fitur — admin akan kasih quote setelah brief dikirim.
-
 # CARA ORDER
-1. Klik tombol "Order Sekarang" / kunjungi halaman /order
-2. Isi form 4 langkah: Pilih Layanan → Detail Tugas → Kontak → Konfirmasi
-3. Upload file referensi (opsional)
-4. Submit → dapet **token tracking**
-5. Admin kontak dalam <1 jam (jam kerja) untuk quote harga
-6. Setelah deal, mulai pengerjaan
+1. Buka /order (atau link layanan langsung, mis. /order?service=ID dari DATA LAYANAN di atas)
+2. Langkah 1 — pilih layanan, isi detail khusus layanan (pilihan seperti di DATA LAYANAN), judul, instruksi, deadline, lampiran opsional
+3. Langkah 2 — isi nama, email, dan nomor WhatsApp aktif
+4. Langkah 3 — tinjau lalu kirim. Klien langsung dapat **kode tracking** (juga dikirim ke WhatsApp klien)
+5. Admin menghubungi klien untuk konsultasi dan menyepakati harga final & deadline
+6. Setelah harga final disepakati, order mulai dikerjakan. Klien dikabari lewat WhatsApp saat harga final ditetapkan dan saat status berubah
 
 # CARA TRACKING ORDER
-- Kunjungi /track lalu masukin token tracking
-- Atau langsung /track/{token}
-- Status order:
+- Buka /track, masukkan kode tracking + 4 digit terakhir nomor WhatsApp pemesan
+- Di tracking terlihat: status, deadline terbaru, estimasi awal atau harga final, detail layanan, dan pesan admin
+- Verifikasi berlaku 30 menit. Jangan minta kode/nomor di chat, arahkan ke /track
+- Urutan status:
 {$statusList}
 
-# KEUNGGULAN
-- ✅ Anti plagiarisme (kerja manual, bukan AI mentah)
-- ✅ Revisi gratis (dalam batas wajar)
-- ✅ Fast respon, deadline-friendly
-- ✅ Terpercaya sejak 2022, 500+ order selesai
-
 # KONTAK & HANDOFF
-- WhatsApp: wa.me/{$wa} (utama, fast respon)
+- WhatsApp admin: wa.me/{$wa} (utama, respon cepat)
 - Email: {$email}
 - Instagram: {$ig}
-
-KAPAN ARAHKAN KE WA:
-- User minta nego harga / quote spesifik
-- User butuh konsultasi panjang
-- User komplain / urgent
-- Pertanyaan teknis yg lo gak tau jawabannya
-Format ajakan WA: "Mending langsung chat admin di WA aja ya: wa.me/{$wa} 🦉"
+Arahkan ke WA jika: nego/quote pasti, konsultasi panjang, komplain, urgent, pembayaran, atau pertanyaan yang tidak ada di data.
+Format: "Langsung chat admin di WA aja ya: wa.me/{$wa} 🦉"
 
 # ATURAN OUTPUT
-- JANGAN tampilkan markdown heading (#, ##) di chat
-- Boleh pakai bullet "-" atau "•" untuk list pendek
-- Link tulis polos (wa.me/xxx atau /order), jangan format markdown link
-- Selalu helpful tapi tetap di koridor topik NativeCuy
+- JANGAN pakai markdown heading (#) atau tabel
+- Boleh **tebal**. Untuk list pendek pakai bullet "•" di awal baris (jangan "*")
+- Tulis link polos: wa.me/xxx, /order, /order?service=ID, /track (jangan format markdown link)
+- Format rupiah: Rp 1.250.000
 PROMPT;
         });
+    }
+
+    /** One service block for the prompt: starting price, link, majors, and every priced option. */
+    protected function describeService(Service $service): string
+    {
+        $lines = [
+            "▸ LAYANAN: {$service->name} — mulai ".Money::rupiah($service->display_price)." · link order: /order?service={$service->id}",
+            "Deskripsi: {$service->description}",
+        ];
+
+        if ($service->majors->isNotEmpty()) {
+            $lines[] = 'Untuk jurusan: '.$service->majors->pluck('name')->join(', ');
+        }
+
+        $fields = $service->formSchema();
+        if ($fields === []) {
+            $lines[] = 'Form: hanya form umum (judul, instruksi, deadline, lampiran). Harga mulai '.Money::rupiah($service->display_price).'.';
+
+            return implode("\n", $lines);
+        }
+
+        $lines[] = 'Isian form & harga:';
+        foreach ($fields as $field) {
+            $flags = array_filter([
+                $field['required'] ? 'wajib' : 'opsional',
+                $field['show_if'] ? 'muncul jika '.$this->conditionLabel($fields, $field['show_if']) : null,
+                match ($field['pricing']) {
+                    'base' => 'menentukan harga dasar',
+                    'add' => 'biaya tambahan',
+                    'per_unit' => 'dihitung per '.($field['unit_label'] ?: 'unit'),
+                    default => null,
+                },
+            ]);
+
+            $options = match (true) {
+                $field['type'] === 'number' && $field['pricing'] === 'per_unit'
+                    => [Money::rupiah($field['unit_price']).' per '.($field['unit_label'] ?: 'unit')
+                        .($field['min'] !== null ? ", minimal {$field['min']}" : '')
+                        .($field['max'] !== null ? ", maksimal {$field['max']}" : '')],
+                $field['options'] !== [] => collect($field['options'])->map(function (array $option) use ($field) {
+                    if ($field['pricing'] === 'none' || $option['price'] === null) {
+                        return $option['label'];
+                    }
+                    if ($field['pricing'] === 'base') {
+                        return $option['label'].' = '.($option['price'] > 0 ? Money::rupiah($option['price']) : 'harga mengikuti pilihan berikutnya');
+                    }
+
+                    return $option['label'].($option['price'] > 0 ? ' +'.Money::rupiah($option['price']) : ' (tanpa biaya tambahan)');
+                })->all(),
+                default => [],
+            };
+
+            $lines[] = "- {$field['label']} (".implode(', ', $flags).')'.($options ? ': '.implode('; ', $options) : '');
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function conditionLabel(array $fields, array $condition): string
+    {
+        $source = collect($fields)->firstWhere('key', $condition['field']);
+        $labels = collect($source['options'] ?? [])->whereIn('value', $condition['values'])->pluck('label')->join(' / ');
+
+        return ($source['label'] ?? $condition['field']).' = '.($labels ?: implode(' / ', $condition['values']));
     }
 }
