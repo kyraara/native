@@ -2,119 +2,92 @@
 
 @section('title', 'Kelola Order')
 @section('page-title', 'Kelola Order')
-@section('page-subtitle', 'Manajemen semua order masuk')
+@section('page-subtitle', 'Pantau order masuk, sepakati harga final, dan perbarui statusnya.')
 
 @section('content')
+@php
+    $search = is_scalar(request('search')) ? (string) request('search') : '';
+    $activeStatus = is_scalar(request('status')) ? (string) request('status') : '';
+    $tabs = ['' => ['label' => 'Semua', 'count' => $statusCounts->sum()]]
+        + collect($statuses)->map(fn ($meta, $key) => ['label' => $meta['label'], 'count' => (int) ($statusCounts[$key] ?? 0)])->all();
+@endphp
 
-{{-- Filter bar --}}
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6">
-    <form method="GET" class="flex flex-col sm:flex-row gap-3" id="filterForm">
-        <div class="flex-1">
-            <input type="text" name="search" value="{{ request('search') }}"
-                   placeholder="Cari token, nama klien, atau judul..."
-                   class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy transition">
-        </div>
-        <select name="status" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy transition bg-white">
-            <option value="">Semua Status</option>
-            @foreach($statuses as $key => $val)
-                <option value="{{ $key }}" {{ request('status') === $key ? 'selected' : '' }}>{{ $val['label'] }}</option>
-            @endforeach
-        </select>
-        <button type="submit" class="bg-navy text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-navy-light transition-colors whitespace-nowrap">
-            <i class="fas fa-filter mr-1"></i> Filter
-        </button>
-        @if(request()->hasAny(['search', 'status']))
-            <a href="{{ route('admin.orders.index') }}" class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-500 hover:text-navy hover:border-navy transition-colors whitespace-nowrap">
-                Reset
-            </a>
+<section class="ui-card">
+    <form method="GET" class="orders-toolbar" role="search" aria-label="Cari order">
+        @if($activeStatus !== '')<input type="hidden" name="status" value="{{ $activeStatus }}">@endif
+        @if($perPage !== $perPageOptions[0])<input type="hidden" name="per_page" value="{{ $perPage }}">@endif
+        <input type="search" name="search" value="{{ $search }}" class="ui-input" aria-label="Cari token, nama klien, atau judul order" placeholder="Cari token, nama klien, atau judul…">
+        <button type="submit" class="ui-btn ui-btn-primary"><x-admin-icon name="search"/>Cari</button>
+        @if($search !== '' || $activeStatus !== '')
+            <a href="{{ route('admin.orders.index') }}" class="ui-btn ui-btn-ghost">Reset</a>
         @endif
-        <a href="{{ route('admin.orders.export', request()->only(['search', 'status'])) }}"
-           class="inline-flex items-center gap-2 bg-green-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-700 transition-colors whitespace-nowrap">
-            <i class="fas fa-file-csv"></i> Export CSV
-        </a>
+        <span class="ui-spacer"></span>
+        <a href="{{ route('admin.orders.export', request()->only(['search', 'status'])) }}" class="ui-btn ui-btn-ghost"><x-admin-icon name="download"/>Export CSV</a>
     </form>
-</div>
 
-{{-- Table --}}
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead class="bg-gray-50 border-b border-gray-100">
+    <div class="ui-card-body" style="padding-bottom:14px">
+        <nav class="orders-status-tabs" aria-label="Filter status order">
+            @foreach($tabs as $key => $tab)
+                <a href="{{ route('admin.orders.index', array_filter(['status' => $key, 'search' => $search, 'per_page' => $perPage !== $perPageOptions[0] ? $perPage : ''], fn ($value) => $value !== '')) }}" @if($activeStatus === (string) $key) aria-current="page" @endif>
+                    {{ $tab['label'] }} <b>{{ $tab['count'] }}</b>
+                </a>
+            @endforeach
+        </nav>
+    </div>
+
+    <div class="ui-table-wrap" tabindex="0" role="region" aria-label="Daftar order">
+        <table class="ui-table orders-list">
+            <thead>
                 <tr>
-                    <th class="text-left px-6 py-3 text-gray-500 font-semibold text-xs uppercase tracking-wider">Token</th>
-                    <th class="text-left px-6 py-3 text-gray-500 font-semibold text-xs uppercase tracking-wider">Klien</th>
-                    <th class="text-left px-6 py-3 text-gray-500 font-semibold text-xs uppercase tracking-wider">Layanan</th>
-                    <th class="text-left px-6 py-3 text-gray-500 font-semibold text-xs uppercase tracking-wider">Judul</th>
-                    <th class="text-left px-6 py-3 text-gray-500 font-semibold text-xs uppercase tracking-wider">Deadline</th>
-                    <th class="text-left px-6 py-3 text-gray-500 font-semibold text-xs uppercase tracking-wider">Status</th>
-                    <th class="px-6 py-3"></th>
+                    <th scope="col">Order</th>
+                    <th scope="col">Klien</th>
+                    <th scope="col">Deadline</th>
+                    <th scope="col" class="ui-num">Harga</th>
+                    <th scope="col">Status</th>
+                    <th scope="col"><span class="sr-only">Aksi</span></th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-50" id="ordersTable">
+            <tbody>
                 @forelse($orders as $order)
-                    @php
-                        $isOverdue = $order->deadline->isPast() && !in_array($order->status, ['done', 'cancelled']);
-                    @endphp
-                    <tr class="hover:bg-gray-50 transition-colors {{ $isOverdue ? 'bg-red-50/40' : '' }}"
-                        x-data="inlineStatus({
-                            orderId: {{ $order->id }},
-                            currentStatus: '{{ $order->status }}',
-                            updateUrl: '{{ route('admin.orders.updateStatus', $order) }}',
-                            csrfToken: '{{ csrf_token() }}'
-                        })">
-                        <td class="px-6 py-4">
-                            <span class="font-mono font-bold text-navy text-xs tracking-wider">{{ $order->tracking_token }}</span>
-                            @if($isOverdue)
-                                <span class="ml-1 text-red-500 text-xs" title="Lewat deadline"><i class="fas fa-exclamation-triangle"></i></span>
+                    @php($isOverdue = $order->deadline->lt(today()) && ! in_array($order->status, ['done', 'cancelled'], true))
+                    <tr x-data="inlineStatus({ currentStatus: @js($order->status), updateUrl: @js(route('admin.orders.updateStatus', $order)) })">
+                        <td data-cell="order">
+                            <a href="{{ route('admin.orders.show', $order) }}" class="ui-cell-title">{{ $order->title }}</a>
+                            <div class="ui-cell-sub"><span class="ui-mono">#{{ $order->tracking_token }}</span><span aria-hidden="true">·</span><span>{{ $order->service?->name ?? 'Layanan dihapus' }}</span></div>
+                        </td>
+                        <td data-cell="client" data-label="Klien">
+                            <div style="font-weight:600">{{ $order->client_name }}</div>
+                            <div class="ui-cell-sub">{{ $order->client_phone }}</div>
+                        </td>
+                        <td data-cell="deadline" data-label="Deadline" @class(['orders-deadline', 'is-overdue' => $isOverdue])>
+                            {{ $order->deadline->locale('id')->translatedFormat('d M Y') }}
+                            <small>{{ $isOverdue ? 'Lewat deadline' : ($order->deadline->isToday() ? 'Hari ini' : $order->deadline->locale('id')->diffForHumans(today()->startOfDay(), \Carbon\CarbonInterface::DIFF_RELATIVE_TO_NOW)) }}</small>
+                        </td>
+                        <td data-cell="price" data-label="Harga" class="ui-num orders-price">
+                            @if($order->price_final !== null)
+                                <strong>@rupiah($order->price_final)</strong><small>Harga final</small>
+                            @elseif($order->price_estimate !== null)
+                                <strong class="is-estimate">@rupiah($order->price_estimate)</strong><small>Estimasi · belum final</small>
+                            @else
+                                <strong class="ui-muted">—</strong><small>Belum ada harga</small>
                             @endif
                         </td>
-                        <td class="px-6 py-4">
-                            <div class="font-medium text-navy-dark">{{ $order->client_name }}</div>
-                            <div class="text-gray-400 text-xs">{{ $order->client_email }}</div>
+                        <td data-cell="status" data-label="Status">
+                            <select @change="updateStatus($event.target.value)" x-model="status" :disabled="saving" aria-label="Status order {{ $order->tracking_token }}"
+                                    class="ui-status-select" :class="'ui-status-' + status">
+                                @foreach($statuses as $key => $meta)
+                                    <option value="{{ $key }}" @selected($order->status === $key)>{{ $meta['label'] }}</option>
+                                @endforeach
+                            </select>
                         </td>
-                        <td class="px-6 py-4 text-gray-600 whitespace-nowrap text-xs">{{ $order->service?->name ?? '—' }}</td>
-                        <td class="px-6 py-4">
-                            <div class="text-navy-dark font-medium max-w-xs truncate text-xs" title="{{ $order->title }}">{{ $order->title }}</div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-xs {{ $isOverdue ? 'text-red-600 font-semibold' : 'text-gray-600' }}">
-                            {{ $order->deadline->format('d M Y') }}
-                        </td>
-                        <td class="px-6 py-4">
-                            {{-- Inline quick status dropdown --}}
-                            <div class="relative">
-                                <select @change="updateStatus($event.target.value)"
-                                        :disabled="saving"
-                                        x-model="status"
-                                        class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border-0 cursor-pointer focus:ring-2 focus:ring-navy/20 transition-all"
-                                        :class="{
-                                            'bg-yellow-100 text-yellow-700': status === 'pending',
-                                            'bg-blue-100 text-blue-700': status === 'processing',
-                                            'bg-purple-100 text-purple-700': status === 'review',
-                                            'bg-green-100 text-green-700': status === 'done',
-                                            'bg-red-100 text-red-700': status === 'cancelled',
-                                            'opacity-60 cursor-wait': saving,
-                                        }">
-                                    @foreach($statuses as $key => $val)
-                                        <option value="{{ $key }}">{{ $val['label'] }}</option>
-                                    @endforeach
-                                </select>
-                                <span x-show="saving" class="absolute -right-5 top-1/2 -translate-y-1/2">
-                                    <i class="fas fa-spinner fa-spin text-navy text-xs"></i>
-                                </span>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 text-right">
-                            <a href="{{ route('admin.orders.show', $order) }}"
-                               class="inline-flex items-center gap-1 bg-navy/10 text-navy text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-navy hover:text-white transition-colors">
-                                <i class="fas fa-eye"></i> Detail
-                            </a>
+                        <td data-cell="action" class="ui-num">
+                            <a href="{{ route('admin.orders.show', $order) }}" class="ui-btn ui-btn-ghost ui-btn-sm">Detail<x-admin-icon name="chevron"/></a>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="7" class="px-6 py-16 text-center text-gray-400">
-                            <i class="fas fa-inbox text-4xl mb-3 block"></i>
-                            <p class="font-medium">Tidak ada order ditemukan</p>
+                        <td colspan="6">
+                            <div class="ui-empty"><strong>Tidak ada order ditemukan</strong>{{ $search !== '' || $activeStatus !== '' ? 'Coba ubah kata kunci atau filter status.' : 'Order baru akan muncul di sini.' }}</div>
                         </td>
                     </tr>
                 @endforelse
@@ -122,45 +95,60 @@
         </table>
     </div>
 
-    @if($orders->hasPages())
-        <div class="px-6 py-4 border-t border-gray-100">
-            {{ $orders->links() }}
-        </div>
-    @endif
-</div>
-
+    <div class="ui-card-foot orders-foot">
+        <form method="GET" class="ui-row" style="gap:8px">
+            @foreach(request()->only(['search', 'status']) as $name => $value)
+                @if(is_scalar($value) && $value !== '')<input type="hidden" name="{{ $name }}" value="{{ $value }}">@endif
+            @endforeach
+            <label for="per-page">Tampilkan</label>
+            <select id="per-page" name="per_page" class="ui-select ui-select-sm" onchange="this.form.submit()">
+                @foreach($perPageOptions as $option)
+                    <option value="{{ $option }}" @selected($perPage === $option)>{{ $option }}</option>
+                @endforeach
+            </select>
+            <span>per halaman</span>
+            <noscript><button class="ui-btn ui-btn-ghost ui-btn-sm">Terapkan</button></noscript>
+        </form>
+        <span>
+            @if($orders->total())
+                {{ $orders->firstItem() }}–{{ $orders->lastItem() }} dari {{ number_format($orders->total(), 0, ',', '.') }} order
+            @else
+                0 order
+            @endif
+        </span>
+        {{ $orders->onEachSide(1)->links('admin.partials.pagination') }}
+    </div>
+</section>
 @endsection
 
 @push('scripts')
 <script>
-    function inlineStatus({ orderId, currentStatus, updateUrl, csrfToken }) {
+    function inlineStatus({ currentStatus, updateUrl }) {
         return {
             status: currentStatus,
             saving: false,
-
             async updateStatus(newStatus) {
                 if (newStatus === currentStatus) return;
                 this.saving = true;
-
                 try {
                     const res = await fetch(updateUrl, {
                         method: 'PATCH',
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken,
+                            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
                         },
                         body: JSON.stringify({ status: newStatus }),
                     });
-
-                    const data = await res.json();
-
+                    const data = await res.json().catch(() => ({}));
                     if (res.ok) {
                         currentStatus = newStatus;
                         Alpine.store('adminToast').fire(data.message || 'Status diperbarui.', 'success');
+                        Alpine.store('adminNotifications').refresh();
                     } else {
-                        this.status = currentStatus; // revert
-                        Alpine.store('adminToast').fire(data.message || 'Gagal memperbarui status.', 'error');
+                        this.status = currentStatus;
+                        const firstError = data.errors ? Object.values(data.errors)[0]?.[0] : null;
+                        Alpine.store('adminToast').fire(firstError || data.message || 'Gagal memperbarui status.', 'error');
                     }
                 } catch (e) {
                     this.status = currentStatus;
@@ -168,7 +156,7 @@
                 } finally {
                     this.saving = false;
                 }
-            }
+            },
         };
     }
 </script>
