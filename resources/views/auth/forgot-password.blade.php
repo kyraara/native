@@ -1,25 +1,28 @@
-<x-guest-layout>
-    <div class="mb-4 text-sm text-gray-600">
-        {{ __('Forgot your password? No problem. Just let us know your email address and we will email you a password reset link that will allow you to choose a new one.') }}
-    </div>
+@extends('layouts.auth')
+@section('title', 'Lupa password')
 
-    <!-- Session Status -->
-    <x-auth-session-status class="mb-4" :status="session('status')" />
+@section('content')
+    <h1>Lupa password?</h1>
+    <p>Masukkan email admin. Kami kirimkan tautan untuk membuat password baru.</p>
 
-    <form method="POST" action="{{ route('password.email') }}">
+    @if(session('status'))
+        <div class="ui-alert ui-alert-success" role="status"><x-admin-icon name="mail"/><span>{{ session('status') }}</span></div>
+    @endif
+
+    <form method="POST" action="{{ route('password.email') }}" x-data="{ submitting: false }" @submit="submitting = true" novalidate>
         @csrf
-
-        <!-- Email Address -->
-        <div>
-            <x-input-label for="email" :value="__('Email')" />
-            <x-text-input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required autofocus />
-            <x-input-error :messages="$errors->get('email')" class="mt-2" />
+        <div class="ui-field">
+            <label for="email" class="ui-label">Email</label>
+            <input id="email" type="email" name="email" value="{{ old('email') }}" class="ui-input" required autofocus autocomplete="username" @error('email') aria-invalid="true" aria-describedby="email-error" @enderror>
+            @error('email')<p id="email-error" class="ui-error">{{ $message }}</p>@enderror
         </div>
 
-        <div class="flex items-center justify-end mt-4">
-            <x-primary-button>
-                {{ __('Email Password Reset Link') }}
-            </x-primary-button>
-        </div>
+        <button type="submit" class="ui-btn ui-btn-primary ui-btn-block" style="margin-top:22px" :disabled="submitting">
+            <span x-text="submitting ? 'Mengirim…' : 'Kirim tautan reset'">Kirim tautan reset</span><x-admin-icon name="mail"/>
+        </button>
     </form>
-</x-guest-layout>
+@endsection
+
+@section('foot')
+    <a class="auth-back" href="{{ route('login') }}"><x-admin-icon name="arrow"/> Kembali ke halaman masuk</a>
+@endsection
