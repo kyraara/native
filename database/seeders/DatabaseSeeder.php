@@ -13,10 +13,19 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        User::updateOrCreate(
-            ['email' => 'admin@nativecuy.id'],
-            ['name' => 'Admin NativeCuy', 'password' => Hash::make('nativecuy2024')]
-        );
+        $adminEmail = env('ADMIN_SEED_EMAIL');
+        $adminPassword = env('ADMIN_SEED_PASSWORD');
+
+        // Admin creation is opt-in. Never keep a reusable production password in source control.
+        if ($adminEmail && $adminPassword) {
+            User::firstOrCreate(
+                ['email' => $adminEmail],
+                [
+                    'name' => env('ADMIN_SEED_NAME', 'Admin NativeCuy'),
+                    'password' => Hash::make($adminPassword),
+                ]
+            );
+        }
 
         $services = [
             ['name' => 'Tugas Kuliah',    'slug' => 'tugas-kuliah',    'description' => 'Essay, laporan praktikum, tugas individu & kelompok semua jurusan.',                'icon_class' => 'fas fa-graduation-cap', 'base_price' => 50000,  'sort_order' => 1],
@@ -24,12 +33,16 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Laporan',          'slug' => 'laporan',          'description' => 'Laporan PKL, KKN, praktikum, penelitian, dan laporan kerja profesional.',           'icon_class' => 'fas fa-file-alt',       'base_price' => 75000,  'sort_order' => 3],
             ['name' => 'Presentasi PPT',   'slug' => 'presentasi-ppt',   'description' => 'Slide presentasi profesional dengan desain menarik dan konten terstruktur.',        'icon_class' => 'fas fa-chalkboard',     'base_price' => 60000,  'sort_order' => 4],
             ['name' => 'Pembuatan Web',    'slug' => 'pembuatan-web',    'description' => 'Website tugas kuliah, portofolio, landing page, hingga sistem informasi lengkap.', 'icon_class' => 'fas fa-laptop-code',    'base_price' => 300000, 'sort_order' => 5],
-            ['name' => 'Lainnya',          'slug' => 'lainnya',          'description' => 'Mind mapping, infografis, terjemahan, resume, proposal bisnis, dan lainnya.',       'icon_class' => 'fas fa-ellipsis-h',     'base_price' => 40000,  'sort_order' => 6],
+            ['name' => 'Publish Jurnal',   'slug' => 'publish-jurnal',   'description' => 'Pendampingan publikasi jurnal SINTA, Non-SINTA, hingga Scopus dari naskah sampai submit.', 'icon_class' => 'fas fa-book-open', 'base_price' => 1000000, 'sort_order' => 6],
+            ['name' => 'Lainnya',          'slug' => 'lainnya',          'description' => 'Mind mapping, infografis, terjemahan, resume, proposal bisnis, dan lainnya.',       'icon_class' => 'fas fa-ellipsis-h',     'base_price' => 40000,  'sort_order' => 7],
         ];
 
         foreach ($services as $service) {
-            Service::updateOrCreate(['slug' => $service['slug']], $service);
+            // Keep admin edits (price, copy, order) on re-seed; only create missing services.
+            Service::firstOrCreate(['slug' => $service['slug']], $service);
         }
+
+        $this->call(ServiceFormSeeder::class);
 
         $tugas = Service::where('slug', 'tugas-kuliah')->first();
         $makalah = Service::where('slug', 'makalah-skripsi')->first();
