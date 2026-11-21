@@ -50,6 +50,18 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        $adminEmails = collect(config('admin.emails', []))
+            ->map(fn (string $email) => Str::lower(trim($email)));
+
+        if (! $adminEmails->contains(Str::lower((string) Auth::user()?->email))) {
+            Auth::logout();
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => trans('auth.failed'),
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 

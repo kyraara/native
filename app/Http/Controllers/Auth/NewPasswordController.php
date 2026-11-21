@@ -37,11 +37,23 @@ class NewPasswordController extends Controller
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
+        $email = Str::lower(trim((string) $request->input('email')));
+        $adminEmails = collect(config('admin.emails', []))
+            ->map(fn (string $adminEmail) => Str::lower(trim($adminEmail)));
+
+        if (! $adminEmails->contains($email)) {
+            return back()->withInput($request->only('email'))
+                ->withErrors(['email' => __(Password::INVALID_USER)]);
+        }
+
         // Here we will attempt to reset the user's password. If it is successful we
         // will update the password on an actual user model and persist it to the
         // database. Otherwise we will parse the error and return the response.
         $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
+            array_merge(
+                $request->only('password', 'password_confirmation', 'token'),
+                ['email' => $email],
+            ),
             function (User $user) use ($request) {
                 $user->forceFill([
                     'password' => Hash::make($request->password),

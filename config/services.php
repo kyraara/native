@@ -36,8 +36,21 @@ return [
     ],
 
     'gemini' => [
-        'key'   => env('GEMINI_API_KEY'),
+        'key' => env('GEMINI_API_KEY'),
         'model' => env('GEMINI_MODEL', 'gemini-2.0-flash'),
+    ],
+
+    'order_notifications' => [
+        'email' => [
+            'enabled' => env('ORDER_EMAIL_NOTIFICATION_ENABLED', false),
+            'recipient' => env('ORDER_NOTIFICATION_EMAIL'),
+        ],
+        'whatsapp' => [
+            'enabled' => env('ORDER_WHATSAPP_NOTIFICATION_ENABLED', false),
+            'endpoint' => env('FONNTE_ENDPOINT', 'https://api.fonnte.com/send'),
+            'token' => env('FONNTE_TOKEN'),
+            'target' => env('FONNTE_TARGET'),
+        ],
     ],
 
 ];

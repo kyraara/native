@@ -22,8 +22,8 @@ class PasswordResetTest extends TestCase
     public function test_reset_password_link_can_be_requested(): void
     {
         Notification::fake();
-
-        $user = User::factory()->create();
+        config(['admin.emails' => ['admin@example.com']]);
+        $user = User::factory()->create(['email' => 'admin@example.com']);
 
         $this->post('/forgot-password', ['email' => $user->email]);
 
@@ -33,8 +33,8 @@ class PasswordResetTest extends TestCase
     public function test_reset_password_screen_can_be_rendered(): void
     {
         Notification::fake();
-
-        $user = User::factory()->create();
+        config(['admin.emails' => ['admin@example.com']]);
+        $user = User::factory()->create(['email' => 'admin@example.com']);
 
         $this->post('/forgot-password', ['email' => $user->email]);
 
@@ -50,8 +50,8 @@ class PasswordResetTest extends TestCase
     public function test_password_can_be_reset_with_valid_token(): void
     {
         Notification::fake();
-
-        $user = User::factory()->create();
+        config(['admin.emails' => ['admin@example.com']]);
+        $user = User::factory()->create(['email' => 'admin@example.com']);
 
         $this->post('/forgot-password', ['email' => $user->email]);
 
@@ -69,5 +69,17 @@ class PasswordResetTest extends TestCase
 
             return true;
         });
+    }
+
+    public function test_reset_link_is_not_sent_to_non_admin_user(): void
+    {
+        Notification::fake();
+        config(['admin.emails' => ['admin@example.com']]);
+        $user = User::factory()->create(['email' => 'customer@example.com']);
+
+        $this->post('/forgot-password', ['email' => $user->email])
+            ->assertSessionHas('status');
+
+        Notification::assertNothingSent();
     }
 }

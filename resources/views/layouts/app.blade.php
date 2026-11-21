@@ -18,7 +18,11 @@
     {{-- AOS --}}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css">
 
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @vite(['resources/css/app.css', 'resources/css/public.css', 'resources/js/app.js'])
+    @if(request()->routeIs('order.track', 'order.trackSearch'))
+        <meta name="robots" content="noindex, nofollow">
+        <meta name="referrer" content="no-referrer">
+    @endif
 
     @stack('head')
 
@@ -62,11 +66,12 @@
         .card-service:hover .service-icon { background: #1B3A6E; color: #F5B914; }
     </style>
 </head>
-<body class="bg-cream text-navy-dark antialiased">
+<body @class(['nc-public bg-cream text-navy-dark antialiased', 'nc-home' => request()->routeIs('home')])>
+    <a class="public-skip" href="#public-content">Langsung ke konten</a>
 
     @include('components.navbar')
 
-    <main>
+    <main id="public-content">
         @yield('content')
     </main>
 
@@ -76,7 +81,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
     <script>
-        AOS.init({ duration: 700, once: true, easing: 'ease-out-cubic' });
+        if (window.AOS) {
+            window.AOS.init({ duration: 500, once: true, easing: 'ease-out-cubic', disable: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+        } else {
+            document.querySelectorAll('[data-aos]').forEach(element => element.removeAttribute('data-aos'));
+        }
     </script>
 
     @stack('scripts')

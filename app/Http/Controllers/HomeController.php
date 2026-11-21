@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Service;
+use App\Models\Major;
 use App\Models\Setting;
 use App\Models\Testimonial;
 use Illuminate\View\View;
@@ -11,8 +12,9 @@ class HomeController extends Controller
 {
     public function index(): View
     {
-        $services = Service::active()->get();
-        $testimonials = Testimonial::with('service')->featured()->latest()->get();
+        $services = Service::active()->with(['majors' => fn ($query) => $query->active()])->get();
+        $majors = Major::active()->whereHas('services', fn ($query) => $query->where('is_active', true))->get();
+        $testimonials = Testimonial::with('service')->featured()->latest()->orderByDesc('id')->limit(6)->get();
 
         $stats = [
             'total_orders'  => Setting::get('total_orders', '500+'),
@@ -21,12 +23,6 @@ class HomeController extends Controller
             'rating'        => Setting::get('rating', '4.9'),
         ];
 
-        $contact = [
-            'wa_number' => Setting::get('wa_number', '6281234567890'),
-            'email'     => Setting::get('email', 'order@nativecuy.id'),
-            'instagram' => Setting::get('instagram', '@nativecuy.id'),
-        ];
-
-        return view('pages.home', compact('services', 'testimonials', 'stats', 'contact'));
+        return view('pages.home', compact('services', 'majors', 'testimonials', 'stats'));
     }
 }
