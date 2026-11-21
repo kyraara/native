@@ -21,5 +21,6 @@ class Setting extends Model
     {
         static::updateOrCreate(['key' => $key], ['value' => $value]);
         Cache::forget("setting_{$key}");
+        \App\Services\AiChatService::forgetPrompt(); // contact details live in the Cuy-AI prompt
     }
 }

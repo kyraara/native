@@ -28,6 +28,11 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- Never reach the real WhatsApp/email gateways from tests; tests opt in via config(). -->
+        <env name="ORDER_EMAIL_NOTIFICATION_ENABLED" value="false"/>
+        <env name="ORDER_WHATSAPP_NOTIFICATION_ENABLED" value="false"/>
+        <env name="FONNTE_TOKEN" value=""/>
+        <env name="FONNTE_TARGET" value=""/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
